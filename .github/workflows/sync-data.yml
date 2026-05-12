@@ -1,0 +1,48 @@
+name: Sync Data
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      source_id:
+        description: 'Specific source ID to sync (leave empty for all)'
+        required: false
+        type: string
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      REVALIDATION_SECRET: ${{ secrets.REVALIDATION_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sync/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd sync
+          npm ci
+
+      - name: Run sync
+        run: |
+          cd sync
+          npx tsx src/index.ts
+
+      - name: Revalidate
+        if: success()
+        run: |
+          curl -s "https://omnihub.plocr.online/api/revalidate" \
+            -H "Content-Type: application/json" \
+            -d '{"secret":"${{ secrets.REVALIDATION_SECRET }}"}' || true
